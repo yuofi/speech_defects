@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import librosa
 import numpy as np
 from keras import layers, models
