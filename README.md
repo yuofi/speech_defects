@@ -1,12 +1,10 @@
 ---
-title: Speech Model
-emoji: 🏢
-colorFrom: yellow
-colorTo: blue
-sdk: streamlit
-sdk_version: 1.38.0
-app_file: app.py
-pinned: false
+title: speech_defects
+emoji: 🐳
+colorFrom: purple
+colorTo: gray
+sdk: docker
+app_port: 8000
 ---
 
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
