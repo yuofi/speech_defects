@@ -1,12 +1,12 @@
 ---
-title: Speech Defects
-emoji: 📈
-colorFrom: red
-colorTo: yellow
-sdk: docker
+title: Speech Model
+emoji: 🏢
+colorFrom: yellow
+colorTo: blue
+sdk: streamlit
+sdk_version: 1.38.0
+app_file: app.py
 pinned: false
-license: mit
-short_description: Model api for detecting speech defects for ai challange
 ---
 
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference

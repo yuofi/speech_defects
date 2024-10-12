@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+torch
+librosa
+requests
+keras
+requests
+io
+os
+logging
+tempfile
+tensorflow
+keras
