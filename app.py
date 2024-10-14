@@ -28,7 +28,7 @@ app = FastAPI(port=8000)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,6 +37,12 @@ app.add_middleware(
 @app.get("/")
 async def read_root():
     return {"message": "Welcome to the Defects_model API"}
+
+@app.on_event("startup")
+async def startup_event():
+    # Получаем URL приложения на Hugging Face Spaces
+    hugging_face_url = os.getenv("SPACE_URL", "URL не найден")
+    print(f"Приложение запущено и доступно по адресу: {hugging_face_url}")
 
 filepath = os.path.abspath("cnn_1_v6_final_model.h5")
 if not os.path.exists(filepath):
