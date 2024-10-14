@@ -38,12 +38,6 @@ app.add_middleware(
 async def read_root():
     return {"message": "Welcome to the Defects_model API"}
 
-@app.on_event("startup")
-async def startup_event():
-    # Получаем URL приложения на Hugging Face Spaces
-    hugging_face_url = os.getenv("SPACE_URL", "URL не найден")
-    print(f"Приложение запущено и доступно по адресу: {hugging_face_url}")
-
 filepath = os.path.abspath("cnn_1_v6_final_model.h5")
 if not os.path.exists(filepath):
     raise FileNotFoundError(f"Model file not found at {filepath}")
@@ -74,9 +68,8 @@ log_file_path = os.path.join("/tmp", "server.log")
 
 logging.basicConfig(
     level=logging.INFO,
-    filename=log_file_path,
-    filemode="w",
     format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()]  # Log to console
 )
 
 
