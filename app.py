@@ -28,11 +28,15 @@ app = FastAPI(port=8000)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],#origins,
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/")
+async def read_root():
+    return {"message": "Welcome to the Defects_model API"}
 
 filepath = os.path.abspath("cnn_1_v6_final_model.h5")
 if not os.path.exists(filepath):
