@@ -5,3 +5,4 @@ librosa
 tensorflow
 keras
 python-multipart
+numba
