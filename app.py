@@ -60,10 +60,11 @@ async def save_audio(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+log_file_path = os.path.join("/tmp", "server.log")
 
 logging.basicConfig(
     level=logging.INFO,
-    filename="server.log",
+    filename=log_file_path,
     filemode="w",
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
@@ -73,7 +74,7 @@ logging.basicConfig(
 def temporary_audio_file(audio_bytes):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
         tmp_file.write(audio_bytes)
-        tmp_file.flush()  # Make sure data is written to disk
+        tmp_file.flush()
         tmp_filename = tmp_file.name
     try:
         yield tmp_filename
@@ -93,7 +94,7 @@ async def process_audio(audio: UploadFile = File(...)):
         audio_bytes = await audio.read()
         logging.info(
             f"Received audio bytes: {len(audio_bytes)} bytes"
-        )  # Log size of audio bytes
+        ) 
         with temporary_audio_file(audio_bytes) as tmp_filename:
             logging.info(f"Temporary file created: {tmp_filename}")
             audio_data, sample_rate = librosa.load(tmp_filename, sr=None)
@@ -110,7 +111,7 @@ async def process_audio(audio: UploadFile = File(...)):
             features = np.expand_dims(features, axis=0)
 
             prediction = model.predict(features)
-            # Add interpretation of prediction here (e.g., class labels)
+
             logging.info(f"Prediction: {prediction}")
             return {"prediction": prediction.tolist()}
 
@@ -121,6 +122,6 @@ async def process_audio(audio: UploadFile = File(...)):
         logging.error(f"Value error: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid audio data: {e}")
     except Exception as e:
-        logging.exception(f"Error processing audio: {e}")  # Log the full traceback
+        logging.exception(f"Error processing audio: {e}") 
         raise HTTPException(status_code=500, detail="Internal server error")
 
