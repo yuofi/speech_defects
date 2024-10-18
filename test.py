@@ -3,6 +3,7 @@ import numpy as np
 import keras
 import httpx
 import librosa
+import whisper
 
 from utils import (
     extract_features,
@@ -48,4 +49,14 @@ model = keras.models.load_model(filepath, compile=False)
 prediction = model.predict(features)
 print(f"Prediction: {prediction.tolist()}")
 
-test_get_answer(audio_file_path)
+
+
+def transcribe_russian(audio_file, model_name="tiny"):
+    model = whisper.load_model(model_name)
+    result = model.transcribe(audio_file, language="russian")
+    return result["text"]
+
+# Example usage:
+audio_file = "audio.mp3"
+text = transcribe_russian(audio_file)
+print(text)
