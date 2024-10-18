@@ -39,7 +39,7 @@ filepath = os.path.abspath("cnn_1_v6_final_model.h5")
 if not os.path.exists(filepath):
     raise FileNotFoundError(f"Model file not found at {filepath}")
 
-cache_dir = os.path.join(os.getcwd(), "whisper_cache")
+cache_dir = "/tmp/whisper_cache"
 os.makedirs(cache_dir, exist_ok=True)
 whisper_model = whisper.load_model("tiny", download_root=cache_dir)
 
