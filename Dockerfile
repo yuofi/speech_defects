@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y ffmpeg && apt-get clean
 
 RUN groupadd -r user && useradd -r -g user -m user
 
-RUN mkdir -p /tmp/whisper_cache && chown -R user:user /tmp/whisper_cache
+RUN mkdir -p /tmp/whisper_cache && chmod 777 /tmp/whisper_cache
 
 RUN chown -R user:user /app
 
