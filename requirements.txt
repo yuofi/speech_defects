@@ -6,3 +6,5 @@ tensorflow
 keras
 python-multipart
 numba
+openai-whisper
+Levenshtein
