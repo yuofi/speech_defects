@@ -23,6 +23,8 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()] 
 )
 
+os.environ['NUMBA_CACHE_DIR'] = '/tmp'
+
 app = FastAPI(port=8000)
 
 app.add_middleware(
