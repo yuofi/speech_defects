@@ -31,7 +31,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET, POST"],
     allow_headers=["*"],
 )
 
@@ -92,7 +92,7 @@ log_file_path = os.path.join("/tmp", "server.log")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()]  # Log to console
+    handlers=[logging.StreamHandler()]
 )
 
 
@@ -125,7 +125,6 @@ async def process_audio(
             if not audio_data.any() or sample_rate == 0:
                 raise ValueError("Empty or invalid audio data.")
             
-            # Извлекаем признаки из аудиоданных
             features = extract_features(audio_data, sample_rate)
             logging.info(f"Features extracted: shape = {features.shape}")
 
@@ -147,7 +146,6 @@ async def process_audio(
             lev_distance = Levenshtein.distance(transcribed_text_clean, phrase.lower().strip())
             phrase_length = max(len(transcribed_text_clean), len(phrase))
 
-            # Допускаем различие в 40% длины исходной фразы
             max_acceptable_distance = 0.5 * phrase_length
             match_phrase = lev_distance <= max_acceptable_distance
 
@@ -155,9 +153,7 @@ async def process_audio(
 
             return {
                 "prediction": prediction.tolist(),
-                "match_phrase": match_phrase,
-                "lev_distance": lev_distance,
-                "transcribed_text": transcribed_text_clean
+                "match_phrase": match_phrase
             }
 
     except Exception as e:
