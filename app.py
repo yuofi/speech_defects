@@ -17,16 +17,20 @@ from utils import (
     pad_or_trim,
 )
 
+#вывод в консоль для просмотри на hugging face
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
     handlers=[logging.StreamHandler()] 
 )
 
+# Установка временной директории для кэша Numba
 os.environ['NUMBA_CACHE_DIR'] = '/tmp'
 
+# Инициализация FastAPI приложения
 app = FastAPI(port=8000)
 
+# Настройка CORS (Cross-Origin Resource Sharing) для обработки запросов с разных доменов
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,18 +39,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-filepath = os.path.abspath("cnn_1_v6_final_model.h5")
-if not os.path.exists(filepath):
-    raise FileNotFoundError(f"Model file not found at {filepath}")
-
+# Инициализация и загрузка модели Whisper для распознавания речи
 cache_dir = "/tmp/whisper_cache"
 os.makedirs(cache_dir, exist_ok=True)
 whisper_model = whisper.load_model("tiny", download_root=cache_dir)
 
-model = keras.models.load_model(filepath, compile=False)
+# загрузка параметров модели
+filepath = os.path.abspath("cnn_1_v6_final_model.h5")
+if not os.path.exists(filepath):
+    raise FileNotFoundError(f"Model file not found at {filepath}")
 
+# Контекстный менеджер для временных аудио файлов
 @contextmanager
 def temporary_audio_file(audio_bytes):
+    """
+    Создает временный файл для хранения аудио данных и автоматически удаляет его после использования
+    """
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
         tmp_file.write(audio_bytes)
         tmp_file.flush()
@@ -57,20 +65,21 @@ def temporary_audio_file(audio_bytes):
         if os.path.exists(tmp_filename):
             os.remove(tmp_filename)
 
+# Корневой endpoint
 @app.get("/")
 async def read_root():
     return {"message": "Welcome to the Defects_model API"}
 
-filepath = os.path.abspath("cnn_1_v6_final_model.h5")
-if not os.path.exists(filepath):
-    raise FileNotFoundError(f"Model file not found at {filepath}")
 
 model = keras.models.load_model(filepath, compile=False)
 target_shape = (32, 200)
 
-
+# Endpoint для сохранения аудио файлов
 @app.post("/save-audio")
 async def save_audio(file: UploadFile = File(...)):
+    """
+    Обработчик для сохранения загруженных аудио файлов
+    """
     if not file.content_type.startswith("audio/"):
         raise HTTPException(status_code=400, detail="Invalid file type")
 
@@ -87,27 +96,36 @@ async def save_audio(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+# Настройка пути для файла логов
 log_file_path = os.path.join("/tmp", "server.log")
 
+# Настройка логирования для отслеживания работы сервера
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()]
 )
 
-
-
+# Основной endpoint для обработки аудио
 @app.post("/process-audio")
 async def process_audio(
     audio: UploadFile = File(...), 
     phrase: str = Form(...)
 ):
+    """
+    Главный обработчик для анализа аудио файлов:
+    - Делает предсказание моделью
+    - Прогоняет аудио через openai-whisper для проверки фразы
+    - Сравнивает полученный текст с ожидаемой фразой
+    """
+    # Проверка формата файла
     if audio.content_type != "audio/mpeg":
         raise HTTPException(
             status_code=400, detail="Invalid file type. Only MP3 files are supported."
         )
 
     try:
+        # Чтение аудио файла
         audio_bytes = await audio.read()
 
         if not audio_bytes:
@@ -115,9 +133,11 @@ async def process_audio(
 
         logging.info(f"Received audio bytes: {len(audio_bytes)} bytes")
 
+        # Обработка аудио во временном файле
         with temporary_audio_file(audio_bytes) as tmp_filename:
             logging.info(f"Temporary file created: {tmp_filename}")
 
+            # Загрузка аудио данных
             audio_data, sample_rate = librosa.load(tmp_filename, sr=None)
             logging.info(
                 f"Audio loaded: sample rate = {sample_rate}, data shape = {audio_data.shape}"
@@ -125,32 +145,38 @@ async def process_audio(
             if not audio_data.any() or sample_rate == 0:
                 raise ValueError("Empty or invalid audio data.")
             
+            # Извлечение признаков из аудио
             features = extract_features(audio_data, sample_rate)
             logging.info(f"Features extracted: shape = {features.shape}")
 
+            # Подготовка данных для модели
             target_shape = (1, model.input_shape[1])
             features = pad_or_trim(features, target_shape[1])
             features = np.expand_dims(features, axis=0)
 
+            # Получение предсказания от модели
             prediction = model.predict(features)
             logging.info(f"Prediction: {prediction}")
 
+            # Транскрибация аудио с помощью Whisper
             transcription_result = whisper_model.transcribe(tmp_filename, language="russian")
             transcribed_text = transcription_result["text"].lower().strip()
 
-            # Удаление знаков препинания из транскрибированного текста
+            # Очистка транскрибированного текста
             transcribed_text_clean = re.sub(r'[^\w\s]', '', transcribed_text) 
             logging.info(f"Transcribed text (cleaned): {transcribed_text_clean}")
 
-            # Вычисление редакторского расстояния
+            # Сравнение с ожидаемой фразой
             lev_distance = Levenshtein.distance(transcribed_text_clean, phrase.lower().strip())
             phrase_length = max(len(transcribed_text_clean), len(phrase))
 
+            # Определение допустимого расстояния Левенштейна
             max_acceptable_distance = 0.5 * phrase_length
             match_phrase = lev_distance <= max_acceptable_distance
 
             logging.info(f"Expected phrase: {phrase}, Is correct: {match_phrase}, Transcribed text: {transcribed_text_clean}, Levenshtein distance: {lev_distance}")
 
+            # Возврат результатов
             return {
                 "prediction": prediction.tolist(),
                 "match_phrase": match_phrase
