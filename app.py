@@ -9,13 +9,11 @@ import librosa
 import numpy as np
 import re
 import Levenshtein
-from fastapi.responses import JSONResponse
 
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from utils import (
-    extract_features,
-    pad_or_trim,
-)
+from utils import get_features
+
 
 #вывод в консоль для просмотри на hugging face
 logging.basicConfig(
@@ -45,7 +43,7 @@ os.makedirs(cache_dir, exist_ok=True)
 whisper_model = whisper.load_model("tiny", download_root=cache_dir)
 
 # загрузка параметров модели
-filepath = os.path.abspath("cnn_1_v6_final_model.h5")
+filepath = os.path.abspath("best_model.h5")
 if not os.path.exists(filepath):
     raise FileNotFoundError(f"Model file not found at {filepath}")
 
@@ -70,9 +68,7 @@ def temporary_audio_file(audio_bytes):
 async def read_root():
     return {"message": "Welcome to the Defects_model API"}
 
-
 model = keras.models.load_model(filepath, compile=False)
-target_shape = (32, 200)
 
 # Endpoint для сохранения аудио файлов
 @app.post("/save-audio")
@@ -146,16 +142,14 @@ async def process_audio(
                 raise ValueError("Empty or invalid audio data.")
             
             # Извлечение признаков из аудио
-            features = extract_features(audio_data, sample_rate)
+            features = get_features(tmp_filename) # here data already in form 
+            # features = np.expand_dims(features, axis=0)  # Add batch dimension
             logging.info(f"Features extracted: shape = {features.shape}")
 
-            # Подготовка данных для модели
-            target_shape = (1, model.input_shape[1])
-            features = pad_or_trim(features, target_shape[1])
-            features = np.expand_dims(features, axis=0)
-
             # Получение предсказания от модели
+            class_weights = {0: 0.5460790960451978, 1: 1.0068333333333332, 2: 10.696369636963697}
             prediction = model.predict(features)
+            prediction = prediction * class_weights
             logging.info(f"Prediction: {prediction}")
 
             # Транскрибация аудио с помощью Whisper
