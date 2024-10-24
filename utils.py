@@ -15,8 +15,7 @@ logging.basicConfig(
 )
 
 # Load the embedding model globally to avoid reloading it every time
-#embedding_model = hub.load("https://www.kaggle.com/models/google/speech-embedding/TensorFlow1/speech-embedding/1")
-embedding_model = tf.saved_model.load("speech-embedding",tags=[])
+embedding_model = hub.load("https://www.kaggle.com/models/google/speech-embedding/TensorFlow1/speech-embedding/1")
 def get_features(path, duration=5):
     try:
         # Load audio file with specific duration and offset to handle silent parts
