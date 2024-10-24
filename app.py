@@ -9,10 +9,11 @@ import librosa
 import numpy as np
 import re
 import Levenshtein
+import tensorflow as tf
 
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from utils import get_features
+from utils_api import get_features
 
 
 #вывод в консоль для просмотри на hugging face
@@ -43,10 +44,12 @@ os.makedirs(cache_dir, exist_ok=True)
 whisper_model = whisper.load_model("tiny", download_root=cache_dir)
 
 # загрузка параметров модели
-filepath = os.path.abspath("best_model.h5")
+filepath = "best_model.keras"
 if not os.path.exists(filepath):
-    raise FileNotFoundError(f"Model file not found at {filepath}")
-
+    raise FileNotFoundError(f"Model file not found at {filepath}")\
+        
+model = tf.keras.models.load_model(filepath, compile=False)
+logging.info(model.summary())
 # Контекстный менеджер для временных аудио файлов
 @contextmanager
 def temporary_audio_file(audio_bytes):
@@ -67,8 +70,6 @@ def temporary_audio_file(audio_bytes):
 @app.get("/")
 async def read_root():
     return {"message": "Welcome to the Defects_model API"}
-
-model = keras.models.load_model(filepath, compile=False)
 
 # Endpoint для сохранения аудио файлов
 @app.post("/save-audio")
@@ -142,21 +143,28 @@ async def process_audio(
                 raise ValueError("Empty or invalid audio data.")
             
             # Извлечение признаков из аудио
-            features = get_features(tmp_filename) # here data already in form 
+            features = get_features(tmp_filename)
             # features = np.expand_dims(features, axis=0)  # Add batch dimension
             logging.info(f"Features extracted: shape = {features.shape}")
 
             # Получение предсказания от модели
-            class_weights = {0: 0.5460790960451978, 1: 1.0068333333333332, 2: 4}
+            class_weights = {0: 0.5460790960451978, 1: 1.0068333333333332, 2: 1000.696369636963697}
 
             prediction = model.predict(features)
             logging.info(f"Prediction shape: {prediction.shape}")
 
-            # Iterate over columns (classes)
+            #умножаем предикт на веса классов
             for j in range(prediction.shape[1]):
-                prediction[0, j] *= class_weights.get(j, 1.0)  # Access elements using [0, j]
+                prediction[0, j] *= class_weights.get(j, 1.0)
+                prediction[0, j] *= 10
 
             logging.info(f"Prediction: {prediction}")
+            response_answer = np.argmax(prediction)
+            if (response_answer == 0): 
+                response_answer = 1
+            else:
+                response_answer = 0
+            logging.info(f"Right or with defects: 1 or 0: {response_answer}")
 
             # Транскрибация аудио с помощью Whisper
             transcription_result = whisper_model.transcribe(tmp_filename, language="russian")
@@ -178,7 +186,7 @@ async def process_audio(
 
             # Возврат результатов
             return {
-                "prediction": prediction.tolist(),
+                "prediction": response_answer,
                 "match_phrase": match_phrase
             }
 
