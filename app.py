@@ -43,7 +43,7 @@ os.makedirs(cache_dir, exist_ok=True)
 whisper_model = whisper.load_model("tiny", download_root=cache_dir)
 
 # загрузка параметров модели
-filepath = os.path.abspath("best_model.h5")
+filepath = os.path.abspath("best_model_mfcc.h5")
 if not os.path.exists(filepath):
     raise FileNotFoundError(f"Model file not found at {filepath}")
 
@@ -147,9 +147,15 @@ async def process_audio(
             logging.info(f"Features extracted: shape = {features.shape}")
 
             # Получение предсказания от модели
-            class_weights = {0: 0.5460790960451978, 1: 1.0068333333333332, 2: 10.696369636963697}
+            class_weights = {0: 0.5460790960451978, 1: 1.0068333333333332, 2: 4}
+
             prediction = model.predict(features)
-            prediction = prediction * class_weights
+            logging.info(f"Prediction shape: {prediction.shape}")
+
+            # Iterate over columns (classes)
+            for j in range(prediction.shape[1]):
+                prediction[0, j] *= class_weights.get(j, 1.0)  # Access elements using [0, j]
+
             logging.info(f"Prediction: {prediction}")
 
             # Транскрибация аудио с помощью Whisper
