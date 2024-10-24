@@ -43,7 +43,7 @@ os.makedirs(cache_dir, exist_ok=True)
 whisper_model = whisper.load_model("tiny", download_root=cache_dir)
 
 # загрузка параметров модели
-filepath = os.path.abspath("best_model_mfcc.h5")
+filepath = os.path.abspath("best_model.h5")
 if not os.path.exists(filepath):
     raise FileNotFoundError(f"Model file not found at {filepath}")
 
