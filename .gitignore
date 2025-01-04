@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -174,4 +175,10 @@ venv
 ol.py
 server.zip
 whisper_cahce
+=======
+venv
+ol.py
+server.zip
+whisper_cahce
+>>>>>>> 6dee89456deef26b2d01a054d4ce556f651f9236
 others
