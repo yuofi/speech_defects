@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 fastapi
 uvicorn
 torch
@@ -14,16 +13,3 @@ passlib
 jose
 sqlalchemy
 pydantic
-=======
-fastapi
-uvicorn
-torch
-librosa
-tensorflow
-keras
-python-multipart
-numba
-openai-whisper
-Levenshtein
-tensorflow_hub
->>>>>>> 6dee89456deef26b2d01a054d4ce556f651f9236
