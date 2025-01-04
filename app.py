@@ -1,19 +1,43 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 import whisper
 import logging
-from contextlib import contextmanager
 import tempfile
 import os
-import keras
 import librosa
 import numpy as np
 import re
 import Levenshtein
+import tensorflow as tf
+import schemas
+import models
+import jwt
+import datetime
 
+from models import User, TokenTable
+from fastapi.security import OAuth2PasswordBearer
+from auth_bearer import JWTBearer
+from functools import wraps
+from contextlib import contextmanager
+from database import Base, engine, SessionLocal
+from sqlalchemy.orm import Session
+from utils_register import create_access_token,create_refresh_token,verify_password,get_hashed_password
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from utils import get_features
+from utils_api import get_features
 
+ACCESS_TOKEN_EXPIRE_MINUTES = 30  # 30 minutes
+REFRESH_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
+ALGORITHM = "HS256"
+JWT_SECRET_KEY = "P-x7iheWwxuQdc_53Sqc6754EGJO0TkXh7t070SPKuY"   # should be kept secret
+JWT_REFRESH_SECRET_KEY = "i009kap21PU_qotFBu33kCO2xcTLFfwncpOw0NQDyGI"
+
+Base.metadata.create_all(engine)
+def get_session():
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
 
 #вывод в консоль для просмотри на hugging face
 logging.basicConfig(
@@ -31,11 +55,12 @@ app = FastAPI(port=8000)
 # Настройка CORS (Cross-Origin Resource Sharing) для обработки запросов с разных доменов
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000"], 
     allow_credentials=True,
-    allow_methods=["GET, POST"],
-    allow_headers=["*"],
+    allow_methods=["*"], 
+    allow_headers=["*"], 
 )
+
 
 # Инициализация и загрузка модели Whisper для распознавания речи
 cache_dir = "/tmp/whisper_cache"
@@ -43,10 +68,12 @@ os.makedirs(cache_dir, exist_ok=True)
 whisper_model = whisper.load_model("tiny", download_root=cache_dir)
 
 # загрузка параметров модели
-filepath = os.path.abspath("best_model.h5")
+filepath = "best_model.keras"
 if not os.path.exists(filepath):
-    raise FileNotFoundError(f"Model file not found at {filepath}")
-
+    raise FileNotFoundError(f"Model file not found at {filepath}")\
+        
+model = tf.keras.models.load_model(filepath, compile=False)
+logging.info(model.summary())
 # Контекстный менеджер для временных аудио файлов
 @contextmanager
 def temporary_audio_file(audio_bytes):
@@ -67,8 +94,6 @@ def temporary_audio_file(audio_bytes):
 @app.get("/")
 async def read_root():
     return {"message": "Welcome to the Defects_model API"}
-
-model = keras.models.load_model(filepath, compile=False)
 
 # Endpoint для сохранения аудио файлов
 @app.post("/save-audio")
@@ -142,15 +167,28 @@ async def process_audio(
                 raise ValueError("Empty or invalid audio data.")
             
             # Извлечение признаков из аудио
-            features = get_features(tmp_filename) # here data already in form 
+            features = get_features(tmp_filename)
             # features = np.expand_dims(features, axis=0)  # Add batch dimension
             logging.info(f"Features extracted: shape = {features.shape}")
 
             # Получение предсказания от модели
-            class_weights = {0: 0.5460790960451978, 1: 1.0068333333333332, 2: 10.696369636963697}
+            class_weights = {0: 0.5460790960451978, 1: 1.0068333333333332, 2: 1000.696369636963697}
+
             prediction = model.predict(features)
-            prediction = prediction * class_weights
+            logging.info(f"Prediction shape: {prediction.shape}")
+
+            #умножаем предикт на веса классов
+            for j in range(prediction.shape[1]):
+                prediction[0, j] *= class_weights.get(j, 1.0)
+                prediction[0, j] *= 10
+
             logging.info(f"Prediction: {prediction}")
+            response_answer = np.argmax(prediction)
+            if (response_answer == 0): 
+                response_answer = 1
+            else:
+                response_answer = 0
+            logging.info(f"Right or with defects: 1 or 0: {response_answer}")
 
             # Транскрибация аудио с помощью Whisper
             transcription_result = whisper_model.transcribe(tmp_filename, language="russian")
@@ -172,10 +210,182 @@ async def process_audio(
 
             # Возврат результатов
             return {
-                "prediction": prediction.tolist(),
+                "prediction": response_answer,
                 "match_phrase": match_phrase
             }
 
     except Exception as e:
         logging.exception(f"Error processing audio: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+    
+
+@app.post("/register")
+def register_user(user: schemas.UserCreate, session: Session = Depends(get_session)):
+    logging.info(f"Received user data: {user}")
+    existing_user = session.query(models.User).filter_by(email=user.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    encrypted_password = get_hashed_password(user.password)
+
+    new_user = models.User(username=user.username, email=user.email, password=encrypted_password )
+
+    session.add(new_user)
+    session.commit()
+    session.refresh(new_user)
+
+    return {"message":"user created successfully"}
+
+@app.post('/login' ,response_model=schemas.TokenSchema)
+def login(request: schemas.requestdetails, db: Session = Depends(get_session)):
+    user = db.query(User).filter(User.email == request.email).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect email")
+    hashed_pass = user.password
+    if not verify_password(request.password, hashed_pass):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect password"
+        )
+    
+    access=create_access_token(user.id)
+    refresh = create_refresh_token(user.id)
+
+    token_db = models.TokenTable(user_id=user.id, access_toke=access, refresh_toke=refresh, status=True)
+ 
+    db.add(token_db)
+    db.commit()
+    db.refresh(token_db)
+    logging.info(f"User {user.email} logged in successfully with token {access}, refresh token {refresh}")
+    return {
+        "access_token": access,
+        "refresh_token": refresh,
+    }
+    
+@app.get('/getusers')
+def getusers( dependencies=Depends(JWTBearer()),session: Session = Depends(get_session)):
+    user = session.query(models.User).all()
+    return user
+
+@app.get('/getuser', response_model=schemas.UserCreate)
+def getuser(session: Session = Depends(get_session), token: str = Depends(JWTBearer())):
+    payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+    user_id = payload["sub"]
+    user = session.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@app.post('/change-password')
+def change_password(request: schemas.changepassword, db: Session = Depends(get_session)):
+    user = db.query(models.User).filter(models.User.email == request.email).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User not found")
+    
+    if not verify_password(request.old_password, user.password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid old password")
+    
+    encrypted_password = get_hashed_password(request.new_password)
+    user.password = encrypted_password
+    db.commit()
+    
+    return {"message": "Password changed successfully"}
+
+@app.post('/logout')
+def logout(dependencies=Depends(JWTBearer()), db: Session = Depends(get_session)):
+    token=dependencies
+    payload = jwt.decode(token, JWT_SECRET_KEY, ALGORITHM)
+    user_id = payload['sub']
+    token_record = db.query(models.TokenTable).all()
+    info=[]
+    for record in token_record :
+        print("record",record)
+        if (datetime.utcnow() - record.created_date).days >1:
+            info.append(record.user_id)
+    if info:
+        existing_token = db.query(models.TokenTable).where(TokenTable.user_id.in_(info)).delete()
+    db.commit()
+        
+    existing_token = db.query(models.TokenTable).filter(models.TokenTable.user_id == user_id, models.TokenTable.access_toke==token).first()
+    if existing_token:
+        existing_token.status=False
+        db.add(existing_token)
+        db.commit()
+        db.refresh(existing_token)
+    return {"message":"Logout Successfully"} 
+
+def token_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+    
+        payload = jwt.decode(kwargs['dependencies'], JWT_SECRET_KEY, ALGORITHM)
+        user_id = payload['sub']
+        data= kwargs['session'].query(models.TokenTable).filter_by(user_id=user_id,access_toke=kwargs['dependencies'],status=True).first()
+        if data:
+            return func(kwargs['dependencies'],kwargs['session'])
+        
+        else:
+            return {'msg': "Token blocked"}
+        
+    return wrapper
+
+@app.get("/progress", response_model=list[schemas.ProgressResponse])
+def get_user_progress(session: Session = Depends(get_session), token: str = Depends(JWTBearer())):
+    payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+    user_id = payload["sub"]
+
+    progress = session.query(models.Progress).filter(models.Progress.user_id == user_id).all()
+    return progress
+
+@app.post("/progress/update")
+def update_progress(
+    progress_data: schemas.ProgressUpdate, 
+    session: Session = Depends(get_session), 
+    token: str = Depends(JWTBearer())
+):
+    payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+    user_id = payload["sub"]
+
+    progress_entry = session.query(models.Progress).filter(
+        models.Progress.user_id == user_id,
+        models.Progress.course_name == progress_data.course_name
+    ).first()
+
+    if not progress_entry:
+        raise HTTPException(status_code=404, detail="Progress entry not found")
+
+    if progress_data.completed_tasks > progress_entry.total_tasks:
+        raise HTTPException(status_code=400, detail="Completed tasks cannot exceed total tasks")
+
+    progress_entry.completed_tasks = progress_data.completed_tasks
+    session.commit()
+    session.refresh(progress_entry)
+    return {"message": "Progress updated successfully"}
+
+@app.post("/progress/create")
+def create_progress(
+    progress_data: schemas.ProgressCreate, 
+    session: Session = Depends(get_session), 
+    token: str = Depends(JWTBearer())
+):
+    payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+    user_id = payload["sub"]
+
+    existing_progress = session.query(models.Progress).filter(
+        models.Progress.user_id == user_id,
+        models.Progress.course_name == progress_data.course_name
+    ).first()
+
+    if existing_progress:
+        raise HTTPException(status_code=400, detail="Progress entry already exists")
+
+    new_progress = models.Progress(
+        user_id=user_id,
+        course_name=progress_data.course_name,
+        completed_tasks=progress_data.completed_tasks,
+        total_tasks=progress_data.total_tasks
+    )
+    session.add(new_progress)
+    session.commit()
+    session.refresh(new_progress)
+    return {"message": "Progress created successfully"}

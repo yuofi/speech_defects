@@ -9,3 +9,7 @@ numba
 openai-whisper
 Levenshtein
 tensorflow_hub
+passlib
+jose
+sqlalchemy
+pydantic

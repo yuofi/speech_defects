@@ -1,8 +1,8 @@
 ---
 title: speech_defects
 emoji: 🐳
-colorFrom: purple
-colorTo: gray
+colorFrom: orange
+colorTo: yellow
 sdk: docker
 app_port: 8000
 ---
