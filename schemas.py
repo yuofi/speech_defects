@@ -40,3 +40,7 @@ class ProgressResponse(BaseModel):
     completed_tasks: int
     total_tasks: int
     last_updated: datetime.datetime
+
+class ProgressUpdate(BaseModel):
+    course_name: str
+    completed_tasks: int
